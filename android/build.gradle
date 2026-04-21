@@ -1,0 +1,54 @@
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            // Suntikkan ekstensi flutter ke android block jika belum ada
+            if (!project.android.hasProperty('flutter')) {
+                project.android.ext.flutter = [
+                    compileSdkVersion: 34,
+                    minSdkVersion: 21,
+                    targetSdkVersion: 34,
+                ]
+            }
+            
+            project.android {
+                // Gunakan properti yang diharapkan oleh plugin
+                if (namespace == null) {
+                    namespace = "dev.fluttercommunity.plus.share"
+                }
+                compileSdkVersion (project.android.ext.flutter.compileSdkVersion ?: 34)
+                
+                defaultConfig {
+                    if (minSdkVersion == null) {
+                        minSdkVersion 21
+                    }
+                    targetSdkVersion 34
+                    multiDexEnabled true
+                }
+
+                compileOptions {
+                    sourceCompatibility JavaVersion.VERSION_17
+                    targetCompatibility JavaVersion.VERSION_17
+                }
+            }
+        }
+    }
+}
+
+rootProject.buildDir = "../build"
+subprojects {
+    project.buildDir = "${rootProject.buildDir}/${project.name}"
+}
+subprojects {
+    project.evaluationDependsOn(":app")
+}
+
+tasks.register("clean", Delete) {
+    delete rootProject.buildDir
+}
