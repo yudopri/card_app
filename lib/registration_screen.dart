@@ -35,9 +35,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     super.dispose();
   }
 
-  Future<void> _pickAndScanImage() async {
+  Future<void> _pickAndScanImage(ImageSource source) async {
     final ImagePicker picker = ImagePicker();
-    final XFile? pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    final XFile? pickedFile = await picker.pickImage(source: source);
     
     if (pickedFile != null) {
       final bytes = await pickedFile.readAsBytes();
@@ -265,7 +265,33 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   Widget _buildImagePickerSection() {
     return GestureDetector(
-      onTap: _pickAndScanImage,
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          builder: (context) => SafeArea(
+            child: Wrap(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.photo_library),
+                  title: const Text('Galeri'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndScanImage(ImageSource.gallery);
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.camera_alt),
+                  title: const Text('Kamera'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndScanImage(ImageSource.camera);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
       child: Container(
         height: 250,
         width: double.infinity,
@@ -291,7 +317,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 children: [
                   Icon(Icons.add_a_photo_rounded, size: 60, color: Colors.grey[400]),
                   const SizedBox(height: 12),
-                  Text('Upload Foto ID Card Fisik', style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w500)),
+                  Text('Upload / Ambil Foto ID Card Fisik', style: TextStyle(color: Colors.grey[600], fontWeight: FontWeight.w500)),
                   Text('(QR akan dibaca otomatis di Mobile)', style: TextStyle(color: Colors.grey[400], fontSize: 12)),
                 ],
               ),
