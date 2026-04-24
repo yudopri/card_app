@@ -6,13 +6,11 @@ class CardOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
-      // Menghitung dimensi overlay (biasanya aspek rasio KTP adalah 1.58:1)
       final width = constraints.maxWidth * 0.85;
       final height = width / 1.58;
 
       return Stack(
         children: [
-          // Background gelap transparan di luar area fokus
           ColorFiltered(
             colorFilter: ColorFilter.mode(
               Colors.black.withOpacity(0.7),
@@ -40,7 +38,6 @@ class CardOverlay extends StatelessWidget {
               ],
             ),
           ),
-          // Garis border dan instruksi
           Align(
             alignment: Alignment.center,
             child: Container(
@@ -52,7 +49,7 @@ class CardOverlay extends StatelessWidget {
               ),
               child: Stack(
                 children: [
-                  // Siku-siku di pojok (Corner markers)
+                  // (Corner markers)
                   _buildCorner(0, 0, 25, true, true),
                   _buildCorner(0, 0, 25, false, true),
                   _buildCorner(0, 0, 25, true, false),

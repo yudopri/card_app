@@ -1,17 +1,23 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:camera/camera.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
-import 'package:flutter/foundation.dart'; // Import for kIsWeb
+import 'package:flutter/foundation.dart';
 import '../camera/card_overlay.dart';
 import '../utils/image_processor.dart';
 import '../network/network_client.dart';
 
 class CameraScreen extends StatefulWidget {
   final List<CameraDescription> cameras;
+  final bool isRegistration;
 
-  const CameraScreen({super.key, required this.cameras});
+  const CameraScreen({
+    super.key,
+    required this.cameras,
+    this.isRegistration = false,
+  });
 
   @override
   _CameraScreenState createState() => _CameraScreenState();
@@ -51,10 +57,37 @@ class _CameraScreenState extends State<CameraScreen> {
         _isProcessing = true;
         _processingMessage = "Mengambil Gambar...";
       });
-      
+
       await _initializeControllerFuture;
       final XFile image = await _controller.takePicture();
       final File imageFile = File(image.path);
+
+      if (widget.isRegistration) {
+        setState(() => _processingMessage = "Memproses Crop ID Card...");
+
+        // 1. Potong gambar penuh sesuai garis overlay markup
+        File? fullIdCardFile = await _processor.cropIDCardFromMarkup(imageFile);
+
+        // 2. deteksi QR code
+        setState(() => _processingMessage = "Mendeteksi QR...");
+        Barcode? qrBarcode = await _processor.detectQR(imageFile);
+
+        // 3. crop image unik
+        File? uniqueCropFile;
+        if (qrBarcode != null && qrBarcode.rawValue != null) {
+          setState(() => _processingMessage = "Memotong Area Unik...");
+          uniqueCropFile = await _processor.cropUniqueImageArea(imageFile, qrBarcode.boundingBox);
+        }
+
+        if (mounted) {
+          Navigator.pop(context, {
+            'full_id_file': fullIdCardFile ?? imageFile,
+            'qr_value': qrBarcode?.rawValue,
+            'unique_crop_file': uniqueCropFile,
+          });
+        }
+        return;
+      }
 
       setState(() => _processingMessage = "Mendeteksi QR...");
       Barcode? qrBarcode = await _processor.detectQR(imageFile);
@@ -71,8 +104,8 @@ class _CameraScreenState extends State<CameraScreen> {
 
       setState(() => _processingMessage = "Memotong Gambar...");
       File? croppedFile = await _processor.cropUniqueImageArea(
-        imageFile, 
-        qrBarcode.boundingBox
+          imageFile,
+          qrBarcode.boundingBox
       );
 
       if (croppedFile == null) {
@@ -82,25 +115,44 @@ class _CameraScreenState extends State<CameraScreen> {
       setState(() => _processingMessage = "Mengunggah Data...");
       final Uint8List croppedBytes = await croppedFile.readAsBytes();
       final String croppedName = croppedFile.path.split(kIsWeb ? '/' : Platform.pathSeparator).last;
-      
+
       final response = await _network.verifyScan(
-        qrBarcode.rawValue!, 
+        qrBarcode.rawValue!,
         croppedBytes,
         croppedName,
       );
 
       if (mounted) {
-        // Handle API Success Response (Assuming JSON with "status" or "message")
-        String resultMsg = response.data is Map 
-            ? (response.data['message'] ?? 'Verifikasi Selesai') 
-            : 'Berhasil';
-            
-        _showResultDialog(
-          "Hasil Verifikasi", 
-          resultMsg
-        );
+        if (response.statusCode == 200 && response.data is Map<String, dynamic>) {
+          _showResultDialog(
+              "Hasil Verifikasi",
+              "Verifikasi Selesai",
+              details: response.data as Map<String, dynamic>
+          );
+        } else if (response.statusCode == 404) {
+          _showResultDialog(
+            "Tidak Ditemukan",
+            response.data['msg'] ?? "ID Card tidak terdaftar di sistem kami.",
+          );
+        } else {
+          String resultMsg = response.data is Map
+              ? (response.data['message'] ?? response.data['msg'] ?? 'Verifikasi Selesai')
+              : 'Berhasil';
+          _showResultDialog("Hasil Verifikasi", resultMsg);
+        }
       }
 
+    } on DioException catch (e) {
+      if (mounted) {
+        if (e.response?.statusCode == 404) {
+          _showResultDialog(
+            "Tidak Ditemukan",
+            e.response?.data['msg'] ?? "Data ID Card tidak ditemukan di database.",
+          );
+        } else {
+          _showResultDialog("Error", e.response?.data['msg'] ?? e.message ?? "Terjadi kesalahan koneksi");
+        }
+      }
     } catch (e) {
       if (mounted) {
         _showResultDialog("Error", e.toString());
@@ -114,16 +166,65 @@ class _CameraScreenState extends State<CameraScreen> {
     }
   }
 
-  void _showResultDialog(String title, String message) {
+  void _showResultDialog(String title, String message, {Map<String, dynamic>? details}) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text("OK"),
+      builder: (context) {
+        bool isFake = details?['status'] == 'fake';
+        Color statusColor = isFake ? Colors.red : Colors.green;
+
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(
+                isFake ? Icons.error_outline : Icons.check_circle_outline,
+                color: statusColor,
+              ),
+              const SizedBox(width: 10),
+              Text(title),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (details != null) ...[
+                _buildResultRow("Status", details['status'].toString().toUpperCase(), color: statusColor, bold: true),
+                const Divider(),
+                _buildResultRow("Nama", details['fullname'] ?? "-"),
+                _buildResultRow("NIP", details['nip'] ?? "-"),
+                _buildResultRow("Match Score", "${((details['match_score'] ?? 0) * 100).toStringAsFixed(1)}%"),
+                _buildResultRow("Liveness", "${((details['liveness_score'] ?? 0) * 100).toStringAsFixed(1)}%"),
+              ] else ...[
+                Text(message),
+              ]
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("TUTUP"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildResultRow(String label, String value, {Color? color, bool bold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text("$label:", style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+              color: color ?? Colors.black87,
+              fontSize: 13,
+            ),
           ),
         ],
       ),
@@ -147,8 +248,8 @@ class _CameraScreenState extends State<CameraScreen> {
             if (snapshot.hasError) {
               return Center(child: Text('Camera Error: ${snapshot.error}', style: const TextStyle(color: Colors.white)));
             }
-            
-            // Perbaikan Kamera Lonjong: Gunakan AspectRatio dari controller
+
+            // AspectRatio
             return Stack(
               fit: StackFit.expand,
               children: [

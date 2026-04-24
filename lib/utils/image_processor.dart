@@ -33,24 +33,33 @@ class ImageProcessor {
     return null;
   }
 
-  static Future<File?> _processCrop(CropParams params) async {
+  //  Cropping Image sesuai garis CardOverlay
+  Future<File?> cropIDCardFromMarkup(File imageFile) async {
+    final tempDir = await getTemporaryDirectory();
+    final params = CropParams(
+      imagePath: imageFile.path,
+      qrBoundingBox: Rect.zero,
+      tempDirPath: tempDir.path,
+    );
+
+    return await compute(_processPerspectiveCrop, params);
+  }
+
+  static Future<File?> _processPerspectiveCrop(CropParams params) async {
     final bytes = await File(params.imagePath).readAsBytes();
     img.Image? originalImage = img.decodeImage(bytes);
     if (originalImage == null) return null;
 
-    // Define crop area: 400x400 square to the right of the QR code
-    // Assuming the ID card is held horizontally.
-    // We can adjust the offset based on common ID card layouts.
-    int cropWidth = 400;
-    int cropHeight = 400;
-    int offsetX = 50; // space between QR and the unique image area
+    int cropWidth = (originalImage.width * 0.85).toInt();
+    int cropHeight = (cropWidth / 1.58).toInt();
 
-    int x = (params.qrBoundingBox.right + offsetX).toInt();
-    int y = (params.qrBoundingBox.top).toInt();
+    int x = (originalImage.width - cropWidth) ~/ 2;
+    int y = (originalImage.height - cropHeight) ~/ 2;
 
-    // Ensure we are within image bounds
-    x = x.clamp(0, originalImage.width - cropWidth);
-    y = y.clamp(0, originalImage.height - cropHeight);
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x + cropWidth > originalImage.width) cropWidth = originalImage.width - x;
+    if (y + cropHeight > originalImage.height) cropHeight = originalImage.height - y;
 
     img.Image cropped = img.copyCrop(
       originalImage,
@@ -62,11 +71,11 @@ class ImageProcessor {
 
     final path = p.join(
       params.tempDirPath,
-      'cropped_id_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      'cropped_full_id_${DateTime.now().millisecondsSinceEpoch}.jpg',
     );
     final croppedFile = File(path);
     await croppedFile.writeAsBytes(img.encodeJpg(cropped));
-    
+
     return croppedFile;
   }
 
@@ -86,5 +95,46 @@ class ImageProcessor {
     _barcodeScanner.close();
   }
 
-  // ...existing code...
+  static Future<File?> _processCrop(CropParams params) async {
+    final bytes = await File(params.imagePath).readAsBytes();
+    img.Image? originalImage = img.decodeImage(bytes);
+    if (originalImage == null) return null;
+
+    final qr = params.qrBoundingBox;
+
+    double qrW = qr.width;
+    double qrH = qr.height;
+
+    int cropW = (qrW * 1.1).toInt();
+    int cropH = (qrH * 1.05).toInt();
+    int gutter = (qrW * 0.05).toInt();
+
+    int x = (qr.right + gutter).toInt();
+    int y = (qr.top).toInt();
+
+    x = x.clamp(0, originalImage.width - 1);
+    y = y.clamp(0, originalImage.height - 1);
+
+    int finalW = (x + cropW > originalImage.width) ? (originalImage.width - x) : cropW;
+    int finalH = (y + cropH > originalImage.height) ? (originalImage.height - y) : cropH;
+
+    if (finalW <= 5 || finalH <= 5) return null;
+
+    img.Image cropped = img.copyCrop(
+      originalImage,
+      x: x,
+      y: y,
+      width: finalW,
+      height: finalH,
+    );
+
+    final path = p.join(
+      params.tempDirPath,
+      'cropped_id_unique_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+    final croppedFile = File(path);
+    await croppedFile.writeAsBytes(img.encodeJpg(cropped));
+
+    return croppedFile;
+  }
 }

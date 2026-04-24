@@ -107,7 +107,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 60),
 
-                // Email Field (Changed to Username as per API)
+                // Email Field
                 TextFormField(
                   controller: _usernameController,
                   decoration: InputDecoration(

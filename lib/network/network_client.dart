@@ -9,7 +9,7 @@ class DioClient {
   late final Dio _dio;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
-  // Ambil Base URL dari environment variables (.env)
+  // Base URL dari environment variables (.env)
   static String get baseUrl => dotenv.get('API_BASE_URL', fallback: 'http://127.0.0.1:5000/api/v1');
 
   factory DioClient() {
@@ -20,10 +20,10 @@ class DioClient {
     print("DIO_DEBUG: Initializing with BaseURL: $baseUrl");
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 30), // Tingkatkan timeout
+      connectTimeout: const Duration(seconds: 30),
       receiveTimeout: const Duration(seconds: 30),
       validateStatus: (status) {
-        return status! < 500; // Terima status < 500 agar bisa handle 401, 403, dll manual
+        return status! < 500;
       },
       headers: {
         'Accept': 'application/json',
@@ -63,7 +63,6 @@ class DioClient {
               return handler.resolve(retryResponse);
             }
           } catch (refreshError) {
-            // Logout user or handle session expiration
           }
         }
         return handler.next(e);
@@ -128,6 +127,8 @@ class DioClient {
     required String qrCode,
     required Uint8List imageBytes,
     required String fileName,
+    required Uint8List uniqueCropBytes,
+    required String uniqueCropFileName,
   }) async {
     FormData formData = FormData.fromMap({
       'fullname': fullname,
@@ -137,6 +138,10 @@ class DioClient {
       'id_card_photo': MultipartFile.fromBytes(
         imageBytes,
         filename: fileName,
+      ),
+      'unique_crop_photo': MultipartFile.fromBytes(
+        uniqueCropBytes,
+        filename: uniqueCropFileName,
       ),
     });
 
