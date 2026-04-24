@@ -164,17 +164,88 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         uniqueCropFileName: finalUniqueFileName,
       );
 
+      // --- PENCEGATAN PAKSA ERROR 400 ---
+      if (response.statusCode != null && response.statusCode! >= 400) {
+        _processErrorResponse(response.data, response.statusCode);
+        return; // BERHENTI di sini. Jangan tampilkan pesan sukses!
+      }
+
+      // Jika berhasil (Status 200 OK)
       _showSnackBar('Data ID Card Berhasil Didaftarkan', Colors.green);
       if (mounted) Navigator.pop(context);
 
     } on DioException catch (e) {
-      String errorMsg = e.response?.data?['message'] ?? "Registrasi Gagal, periksa koneksi jaringan.";
-      _showSnackBar(errorMsg, const Color(0xFFEF4444));
+      _processErrorResponse(e.response?.data, e.response?.statusCode);
     } catch (e) {
       _showSnackBar('Terjadi kesalahan sistem: $e', const Color(0xFFEF4444));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  // --- PEMBACA JSON ERROR ---
+  void _processErrorResponse(dynamic data, int? statusCode) {
+    String errorMsg = "Registrasi Gagal, periksa koneksi jaringan.";
+
+    if (data != null && data is Map<String, dynamic>) {
+      if (data.containsKey('msg')) {
+        errorMsg = data['msg'].toString();
+
+        if (data.containsKey('error_code') && data['error_code'] == 'ALREADY_REGISTERED') {
+          errorMsg = "Data Duplikat:\n$errorMsg";
+        }
+      }
+      // Fallback lain
+      else if (data.containsKey('detail')) {
+        final detail = data['detail'];
+        errorMsg = detail is List ? detail.map((err) => err.toString()).join('\n') : detail.toString();
+      } else if (data.containsKey('errors')) {
+        final errors = data['errors'];
+        errorMsg = errors is Map ? errors.values.map((v) => v is List ? v.join(', ') : v.toString()).join('\n') : errors.toString();
+      } else if (data.containsKey('message')) {
+        errorMsg = data['message'].toString();
+      } else if (statusCode != null && statusCode >= 400) {
+        errorMsg = "Gagal diproses (Status $statusCode). Periksa kembali data Anda.";
+      }
+    } else if (data is String) {
+      errorMsg = data;
+    } else {
+      errorMsg = "Error $statusCode: Terjadi kesalahan pada server.";
+    }
+
+    // Tampilkan error
+    if (errorMsg.contains('\n') || errorMsg.length > 80) {
+      _showErrorDialog(errorMsg);
+    } else {
+      _showSnackBar(errorMsg, const Color(0xFFEF4444));
+    }
+  }
+
+  // Helper Error Dialog
+  void _showErrorDialog(String messages) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: const [
+            Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444)),
+            SizedBox(width: 8),
+            Text('Peringatan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Text(messages, style: const TextStyle(color: Color(0xFF4B5563), height: 1.5)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Mengerti', style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E40AF))),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSnackBar(String message, Color color) {
