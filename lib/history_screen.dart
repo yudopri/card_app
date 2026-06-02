@@ -213,9 +213,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: () {
-          // TODO: Navigasi ke detail riwayat jika diperlukan
-        },
+        onTap: () => _showDetailDialog(item),
         borderRadius: BorderRadius.circular(16),
         child: Container(
           padding: const EdgeInsets.all(16),
@@ -266,6 +264,15 @@ class _HistoryScreenState extends State<HistoryScreen> {
                           item['created_at']?.split('.')[0] ?? '-',
                           style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
                         ),
+                        if (item['match_score'] != null) ...[
+                          const SizedBox(width: 12),
+                          const Icon(Icons.analytics_outlined, size: 12, color: Color(0xFF9CA3AF)),
+                          const SizedBox(width: 4),
+                          Text(
+                            "${((item['match_score'] ?? 0) * 100).toStringAsFixed(1)}%",
+                            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11, fontWeight: FontWeight.bold),
+                          ),
+                        ],
                       ],
                     ),
                   ],
@@ -291,6 +298,230 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showDetailDialog(Map<String, dynamic> item) {
+    final String status = item['status'] ?? 'Unknown';
+    final String statusLower = status.toLowerCase();
+    Color statusColor;
+    if (statusLower == 'verified' || statusLower == 'success') {
+      statusColor = const Color(0xFF10B981);
+    } else if (statusLower == 'failed' || statusLower == 'rejected') {
+      statusColor = const Color(0xFFEF4444);
+    } else {
+      statusColor = const Color(0xFFF59E0B);
+    }
+
+    // Ambil score, coba beberapa kemungkinan key
+    double matchScore = (item['match_score'] ?? item['similarity'] ?? item['score'] ?? 0).toDouble();
+    double livenessScore = (item['liveness_score'] ?? item['liveness'] ?? 0).toDouble();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.history_rounded, color: Colors.white, size: 48),
+                      const SizedBox(height: 12),
+                      Text(
+                        "Detail Verifikasi",
+                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildInfoRow("Nama", item['id_card_fullname'] ?? "-"),
+                      _buildInfoRow("QR", item['id_card_qr'] ?? "-"),
+                      _buildInfoRow("Status", status.toUpperCase(), valueColor: statusColor, isBold: true),
+                      _buildInfoRow("Waktu", item['created_at']?.split('.')[0] ?? "-"),
+                      
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Divider(),
+                      ),
+
+                      const Text(
+                        "Analisis Biometrik",
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _buildScoreMetric(
+                              "Match Score", 
+                              matchScore, 
+                              matchScore > 0.8 ? Colors.green : Colors.orange
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _buildScoreMetric(
+                              "Liveness", 
+                              livenessScore, 
+                              livenessScore > 0.8 ? Colors.blue : Colors.orange
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: Divider(),
+                      ),
+                      
+                      const Text(
+                        "Perbandingan Gambar",
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
+                      ),
+                      const SizedBox(height: 12),
+                      
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              children: [
+                                const Text("Gambar Asli", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                const SizedBox(height: 4),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    height: 120,
+                                    width: double.infinity,
+                                    color: Colors.grey[200],
+                                    child: item['original_image_url'] != null
+                                        ? Image.network(
+                                            item['original_image_url'],
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                          )
+                                        : const Icon(Icons.image_not_supported, color: Colors.grey),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              children: [
+                                const Text("Gambar Scan", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                const SizedBox(height: 4),
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Container(
+                                    height: 120,
+                                    width: double.infinity,
+                                    color: Colors.grey[200],
+                                    child: item['scanned_image_url'] != null
+                                        ? Image.network(
+                                            item['scanned_image_url'],
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                          )
+                                        : const Icon(Icons.image_not_supported, color: Colors.grey),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: statusColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text("TUTUP", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildScoreMetric(String label, double score, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.2)),
+      ),
+      child: Column(
+        children: [
+          Text(label, style: const TextStyle(fontSize: 10, color: Colors.grey, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+          Text(
+            "${(score * 100).toStringAsFixed(1)}%",
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: score,
+              backgroundColor: color.withOpacity(0.1),
+              valueColor: AlwaysStoppedAnimation<Color>(color),
+              minHeight: 4,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value, {Color? valueColor, bool isBold = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
+          Text(
+            value,
+            style: TextStyle(
+              color: valueColor ?? const Color(0xFF111827),
+              fontSize: 13,
+              fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

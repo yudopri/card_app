@@ -170,42 +170,147 @@ class _CameraScreenState extends State<CameraScreen> {
     showDialog(
       context: context,
       builder: (context) {
-        bool isFake = details?['status'] == 'fake';
-        Color statusColor = isFake ? Colors.red : Colors.green;
+        // Use details to determine status and color
+        final String status = details?['status'] ?? (title == "Error" ? "failed" : "unknown");
+        final String statusLower = status.toLowerCase();
+        
+        Color statusColor;
+        if (statusLower == 'verified' || statusLower == 'success' || (details != null && details['status'] != 'fake')) {
+          statusColor = const Color(0xFF10B981);
+        } else if (statusLower == 'failed' || statusLower == 'rejected' || statusLower == 'fake') {
+          statusColor = const Color(0xFFEF4444);
+        } else {
+          statusColor = const Color(0xFFF59E0B);
+        }
 
-        return AlertDialog(
-          title: Row(
-            children: [
-              Icon(
-                isFake ? Icons.error_outline : Icons.check_circle_outline,
-                color: statusColor,
-              ),
-              const SizedBox(width: 10),
-              Text(title),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (details != null) ...[
-                _buildResultRow("Status", details['status'].toString().toUpperCase(), color: statusColor, bold: true),
-                const Divider(),
-                _buildResultRow("Nama", details['fullname'] ?? "-"),
-                _buildResultRow("NIP", details['nip'] ?? "-"),
-                _buildResultRow("Match Score", "${((details['match_score'] ?? 0) * 100).toStringAsFixed(1)}%"),
-                _buildResultRow("Liveness", "${((details['liveness_score'] ?? 0) * 100).toStringAsFixed(1)}%"),
-              ] else ...[
-                Text(message),
-              ]
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("TUTUP"),
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Header
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: statusColor,
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  child: Column(
+                    children: [
+                      Icon(
+                        (statusLower == 'failed' || statusLower == 'fake') ? Icons.error_outline : Icons.check_circle_outline,
+                        color: Colors.white,
+                        size: 48,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        title,
+                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                    ],
+                  ),
+                ),
+                
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (details != null) ...[
+                        _buildResultRow("Status", status.toUpperCase(), color: statusColor, bold: true),
+                        const Divider(),
+                        _buildResultRow("Nama", details['fullname'] ?? "-"),
+                        _buildResultRow("NIP", details['nip'] ?? "-"),
+                        _buildResultRow("Match Score", "${((details['match_score'] ?? 0) * 100).toStringAsFixed(1)}%"),
+                        _buildResultRow("Liveness", "${((details['liveness_score'] ?? 0) * 100).toStringAsFixed(1)}%"),
+                        
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Divider(),
+                        ),
+                        
+                        const Text(
+                          "Perbandingan Gambar",
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
+                        ),
+                        const SizedBox(height: 12),
+                        
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Text("Gambar Asli", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                  const SizedBox(height: 4),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      height: 120,
+                                      width: double.infinity,
+                                      color: Colors.grey[200],
+                                      child: details['original_image_url'] != null
+                                          ? Image.network(
+                                              details['original_image_url'],
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                            )
+                                          : const Icon(Icons.image_not_supported, color: Colors.grey),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  const Text("Gambar Scan", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                                  const SizedBox(height: 4),
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Container(
+                                      height: 120,
+                                      width: double.infinity,
+                                      color: Colors.grey[200],
+                                      child: details['scanned_image_url'] != null
+                                          ? Image.network(
+                                              details['scanned_image_url'],
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                            )
+                                          : const Icon(Icons.image_not_supported, color: Colors.grey),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ] else ...[
+                        Text(message, style: const TextStyle(fontSize: 14)),
+                      ]
+                    ],
+                  ),
+                ),
+                
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: statusColor,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    child: const Text("TUTUP", style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         );
       },
     );
