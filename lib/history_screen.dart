@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'network/network_client.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -165,6 +166,20 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 
+  String _formatDateTime(String? dateString) {
+    if (dateString == null || dateString.isEmpty || dateString == '-') return '-';
+    try {
+      // 1. Parse string ISO 8601 ke DateTime (otomatis mendeteksi 'Z' sebagai UTC)
+      DateTime utcTime = DateTime.parse(dateString);
+      // 2. Konversi ke waktu lokal perangkat
+      DateTime localTime = utcTime.toLocal();
+      // 3. Format untuk tampilan
+      return DateFormat('dd MMM yyyy, HH:mm').format(localTime);
+    } catch (e) {
+      return dateString.split('.')[0]; // Fallback if parsing fails
+    }
+  }
+
   // Widget helper untuk Empty State
   Widget _buildEmptyState() {
     return SingleChildScrollView(
@@ -256,23 +271,33 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 6),
-                    Row(
+                    Wrap(
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      spacing: 8,
                       children: [
-                        const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF9CA3AF)),
-                        const SizedBox(width: 4),
-                        Text(
-                          item['created_at']?.split('.')[0] ?? '-',
-                          style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.access_time_rounded, size: 12, color: Color(0xFF9CA3AF)),
+                            const SizedBox(width: 4),
+                            Text(
+                              _formatDateTime(item['created_at']),
+                              style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11),
+                            ),
+                          ],
                         ),
-                        if (item['match_score'] != null) ...[
-                          const SizedBox(width: 12),
-                          const Icon(Icons.analytics_outlined, size: 12, color: Color(0xFF9CA3AF)),
-                          const SizedBox(width: 4),
-                          Text(
-                            "${((item['match_score'] ?? 0) * 100).toStringAsFixed(1)}%",
-                            style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11, fontWeight: FontWeight.bold),
+                        if (item['match_score'] != null)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.analytics_outlined, size: 12, color: Color(0xFF9CA3AF)),
+                              const SizedBox(width: 4),
+                              Text(
+                                "${((item['match_score'] ?? 0) * 100).toStringAsFixed(1)}%",
+                                style: const TextStyle(color: Color(0xFF9CA3AF), fontSize: 11, fontWeight: FontWeight.bold),
+                              ),
+                            ],
                           ),
-                        ],
                       ],
                     ),
                   ],
@@ -355,7 +380,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       _buildInfoRow("Nama", item['id_card_fullname'] ?? "-"),
                       _buildInfoRow("QR", item['id_card_qr'] ?? "-"),
                       _buildInfoRow("Status", status.toUpperCase(), valueColor: statusColor, isBold: true),
-                      _buildInfoRow("Waktu", item['created_at']?.split('.')[0] ?? "-"),
+                      _buildInfoRow("Waktu", _formatDateTime(item['created_at'])),
                       
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
@@ -510,15 +535,19 @@ class _HistoryScreenState extends State<HistoryScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13)),
-          Text(
-            value,
-            style: TextStyle(
-              color: valueColor ?? const Color(0xFF111827),
-              fontSize: 13,
-              fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                color: valueColor ?? const Color(0xFF111827),
+                fontSize: 13,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -526,3 +555,4 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
+
