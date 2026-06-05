@@ -211,18 +211,32 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildHistoryCard(Map<String, dynamic> item) {
     final String status = item['status'] ?? 'Unknown';
     final String statusLower = status.toLowerCase();
+
     Color statusColor;
     IconData statusIcon;
 
-    if (statusLower == 'verified' || statusLower == 'success') {
-      statusColor = const Color(0xFF10B981); // Emerald Green
-      statusIcon = Icons.check_circle_rounded;
-    } else if (statusLower == 'failed' || statusLower == 'rejected') {
-      statusColor = const Color(0xFFEF4444); // Red
-      statusIcon = Icons.cancel_rounded;
-    } else {
-      statusColor = const Color(0xFFF59E0B); // Amber / Pending
-      statusIcon = Icons.pending_actions_rounded;
+    switch (statusLower) {
+      case 'verified':
+      case 'success':
+        statusColor = const Color(0xFF10B981); // Green
+        statusIcon = Icons.check_circle_rounded;
+        break;
+
+      case 'duplicate':
+        statusColor = const Color(0xFFF59E0B); // Amber
+        statusIcon = Icons.warning_rounded;
+        break;
+
+      case 'fake':
+      case 'failed':
+      case 'rejected':
+        statusColor = const Color(0xFFEF4444); // Red
+        statusIcon = Icons.cancel_rounded;
+        break;
+
+      default:
+        statusColor = const Color(0xFF6B7280); // Grey
+        statusIcon = Icons.help_outline_rounded;
     }
 
     return Material(
@@ -330,13 +344,27 @@ class _HistoryScreenState extends State<HistoryScreen> {
   void _showDetailDialog(Map<String, dynamic> item) {
     final String status = item['status'] ?? 'Unknown';
     final String statusLower = status.toLowerCase();
+
     Color statusColor;
-    if (statusLower == 'verified' || statusLower == 'success') {
-      statusColor = const Color(0xFF10B981);
-    } else if (statusLower == 'failed' || statusLower == 'rejected') {
-      statusColor = const Color(0xFFEF4444);
-    } else {
-      statusColor = const Color(0xFFF59E0B);
+
+    switch (statusLower) {
+      case 'verified':
+      case 'success':
+        statusColor = const Color(0xFF10B981);
+        break;
+
+      case 'duplicate':
+        statusColor = const Color(0xFFF59E0B);
+        break;
+
+      case 'fake':
+      case 'failed':
+      case 'rejected':
+        statusColor = const Color(0xFFEF4444);
+        break;
+
+      default:
+        statusColor = const Color(0xFF6B7280);
     }
 
     // Ambil score, coba beberapa kemungkinan key

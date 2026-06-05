@@ -171,16 +171,31 @@ class _CameraScreenState extends State<CameraScreen> {
       context: context,
       builder: (context) {
         // Use details to determine status and color
-        final String status = details?['status'] ?? (title == "Error" ? "failed" : "unknown");
+        final String status =
+            details?['status'] ?? (title == "Error" ? "failed" : "unknown");
+
         final String statusLower = status.toLowerCase();
-        
+
         Color statusColor;
-        if (statusLower == 'verified' || statusLower == 'success' || (details != null && details['status'] != 'fake')) {
-          statusColor = const Color(0xFF10B981);
-        } else if (statusLower == 'failed' || statusLower == 'rejected' || statusLower == 'fake') {
-          statusColor = const Color(0xFFEF4444);
-        } else {
-          statusColor = const Color(0xFFF59E0B);
+
+        switch (statusLower) {
+          case 'verified':
+          case 'success':
+            statusColor = const Color(0xFF10B981); // Green
+            break;
+
+          case 'duplicate':
+            statusColor = const Color(0xFFF59E0B); // Amber
+            break;
+
+          case 'fake':
+          case 'failed':
+          case 'rejected':
+            statusColor = const Color(0xFFEF4444); // Red
+            break;
+
+          default:
+            statusColor = const Color(0xFF6B7280); // Grey
         }
 
         return Dialog(
