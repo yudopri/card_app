@@ -5,10 +5,9 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:google_mlkit_barcode_scanning/google_mlkit_barcode_scanning.dart';
-import 'package:camera/camera.dart'; // PASTI KAN INI DI-IMPORT
+import 'package:camera/camera.dart';
 import 'network/network_client.dart';
 import 'camera/camera_screen.dart';
-import 'utils/image_processor.dart';
 import 'package:dio/dio.dart';
 
 class RegistrationScreen extends StatefulWidget {
@@ -26,12 +25,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   final _qrController = TextEditingController();
   final DioClient _dioClient = DioClient();
   final BarcodeScanner _barcodeScanner = BarcodeScanner();
-  final ImageProcessor _imageProcessor = ImageProcessor();
 
   Uint8List? _imageBytes;
-  Uint8List? _uniqueCropBytes;
   String? _fileName;
-  String? _uniqueCropFileName;
   String? _imagePreviewPath;
   bool _isLoading = false;
   bool _isScanningQR = false;
@@ -40,60 +36,56 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
   @override
   void dispose() {
     _barcodeScanner.close();
-    _imageProcessor.dispose();
     _nameController.dispose();
     _nipController.dispose();
     _jobController.dispose();
     _qrController.dispose();
     super.dispose();
   }
-// CameraScreen Custom
+
+  // CameraScreen Custom Result Handler
   Future<void> _processCameraScreenResult(Map<String, dynamic> result) async {
     final File idCardFile = result['full_id_file'];
     final String? qrValue = result['qr_value'];
-    final File? uniqueCropFile = result['unique_crop_file'];
 
     final bytes = await idCardFile.readAsBytes();
 
     setState(() {
       _imageBytes = bytes;
       _fileName = idCardFile.path.split(Platform.pathSeparator).last;
-      _imagePreviewPath = idCardFile.path; // Preview sekarang akan menampilkan gambar yang sudah terpotong rapi!
+      _imagePreviewPath = idCardFile.path;
 
       if (qrValue != null) {
         _qrController.text = qrValue;
       }
     });
 
-    if (uniqueCropFile != null) {
-      _uniqueCropBytes = await uniqueCropFile.readAsBytes();
-      _uniqueCropFileName = uniqueCropFile.path.split(Platform.pathSeparator).last;
-    }
-
     if (qrValue != null) {
-      _showSnackBar('Gambar KTP berhasil dipotong & QR Code terdeteksi otomatis!', Colors.green);
+      _showSnackBar('Gambar KTP berhasil dimuat & QR Code terdeteksi otomatis!', Colors.green);
     } else {
-      _showSnackBar('Gambar KTP berhasil dipotong, tapi QR tidak ditemukan. Isi data manual.', const Color(0xFFF59E0B));
+      _showSnackBar('Gambar KTP berhasil dimuat, tapi QR tidak ditemukan. Isi data manual.', const Color(0xFFF59E0B));
     }
   }
+
+  // Gallery Picker & Scanner
   Future<void> _pickAndScanImage(ImageSource source) async {
     final ImagePicker picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(source: source, imageQuality: 85);
 
     if (pickedFile != null) {
       final bytes = await pickedFile.readAsBytes();
-      final File imageFile = File(pickedFile.path);
 
       setState(() {
         _imageBytes = bytes;
         _fileName = pickedFile.name;
         _imagePreviewPath = pickedFile.path;
         _isScanningQR = true;
+        _processingMessage = "Mendeteksi QR...";
       });
 
       if (!kIsWeb) {
         try {
-          // 1. Deteksi QR
+          // Deteksi QR menggunakan ML Kit
           final inputImage = InputImage.fromFilePath(pickedFile.path);
           final List<Barcode> barcodes = await _barcodeScanner.processImage(inputImage);
 
@@ -105,27 +97,13 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               setState(() {
                 _qrController.text = qrValue;
               });
-
-              // 2. Cropping Otomatis
-              setState(() => _processingMessage = "Memproses Cropping...");
-              final File? croppedFile = await _imageProcessor.cropUniqueImageArea(
-                  imageFile,
-                  firstBarcode.boundingBox
-              );
-
-              if (croppedFile != null) {
-                _uniqueCropBytes = await croppedFile.readAsBytes();
-                _uniqueCropFileName = "crop_${pickedFile.name}";
-                debugPrint("Auto-cropping success. Size: ${_uniqueCropBytes?.length} bytes");
-              }
-
-              _showSnackBar('QR Code & Area Foto terdeteksi otomatis!', Colors.green);
+              _showSnackBar('QR Code terdeteksi otomatis!', Colors.green);
             }
           } else {
             _showSnackBar('QR Code tidak ditemukan. Isilah data secara manual.', const Color(0xFFF59E0B));
           }
         } catch (e) {
-          debugPrint('Error scanning/cropping: $e');
+          debugPrint('Error scanning: $e');
         } finally {
           if (mounted) setState(() => _isScanningQR = false);
         }
@@ -143,16 +121,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       return;
     }
 
-    if (!kIsWeb && _uniqueCropBytes == null) {
-      _showSnackBar('Gagal memproses area foto unik. Coba foto dengan QR yang lebih jelas.', const Color(0xFFEF4444));
-      return;
-    }
-
-    final Uint8List finalUniqueBytes = _uniqueCropBytes ?? _imageBytes!;
-    final String finalUniqueFileName = _uniqueCropFileName ?? "web_crop_$_fileName";
-
+    // Mengaktifkan loading overlay sebelum menunggu JSON Response
     setState(() => _isLoading = true);
+
     try {
+      // Pemanggilan API. Argumen cropping (uniqueCropBytes dll) sudah dihilangkan
       final response = await _dioClient.adminRegisterId(
         fullname: _nameController.text.trim(),
         nip: _nipController.text.trim(),
@@ -160,17 +133,15 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         qrCode: _qrController.text.trim(),
         imageBytes: _imageBytes!,
         fileName: _fileName ?? 'id_card.jpg',
-        uniqueCropBytes: finalUniqueBytes,
-        uniqueCropFileName: finalUniqueFileName,
       );
 
-      // --- PENCEGATAN PAKSA ERROR 400 ---
+      // Pencegatan error
       if (response.statusCode != null && response.statusCode! >= 400) {
         _processErrorResponse(response.data, response.statusCode);
-        return; // BERHENTI di sini. Jangan tampilkan pesan sukses!
+        return;
       }
 
-      // Jika berhasil (Status 200 OK)
+      // Berhasil
       _showSnackBar('Data ID Card Berhasil Didaftarkan', Colors.green);
       if (mounted) Navigator.pop(context);
 
@@ -179,11 +150,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     } catch (e) {
       _showSnackBar('Terjadi kesalahan sistem: $e', const Color(0xFFEF4444));
     } finally {
+      // Mematikan loading overlay
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  // --- PEMBACA JSON ERROR ---
   void _processErrorResponse(dynamic data, int? statusCode) {
     String errorMsg = "Registrasi Gagal, periksa koneksi jaringan.";
 
@@ -194,9 +165,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         if (data.containsKey('error_code') && data['error_code'] == 'ALREADY_REGISTERED') {
           errorMsg = "Data Duplikat:\n$errorMsg";
         }
-      }
-      // Fallback lain
-      else if (data.containsKey('detail')) {
+      } else if (data.containsKey('detail')) {
         final detail = data['detail'];
         errorMsg = detail is List ? detail.map((err) => err.toString()).join('\n') : detail.toString();
       } else if (data.containsKey('errors')) {
@@ -213,7 +182,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
       errorMsg = "Error $statusCode: Terjadi kesalahan pada server.";
     }
 
-    // Tampilkan error
     if (errorMsg.contains('\n') || errorMsg.length > 80) {
       _showErrorDialog(errorMsg);
     } else {
@@ -221,15 +189,14 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     }
   }
 
-  // Helper Error Dialog
   void _showErrorDialog(String messages) {
     if (!mounted) return;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Row(
-          children: const [
+        title: const Row(
+          children: [
             Icon(Icons.warning_amber_rounded, color: Color(0xFFEF4444)),
             SizedBox(width: 8),
             Text('Peringatan', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
@@ -262,13 +229,12 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Dimensi layar
     final screenWidth = MediaQuery.of(context).size.width;
     final isTablet = screenWidth > 600;
     final horizontalPadding = isTablet ? screenWidth * 0.15 : 24.0;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA), // Background enterprise
+      backgroundColor: const Color(0xFFF8F9FA),
       appBar: AppBar(
         title: const Text(
             'Registrasi ID Card',
@@ -280,114 +246,148 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         scrolledUnderElevation: 1,
         foregroundColor: const Color(0xFF1E40AF),
       ),
-      body: SingleChildScrollView(
-        padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 24),
-        child: Column(
-          children: [
-            // Upload Area
-            _buildImagePickerSection(),
-            const SizedBox(height: 32),
-
-            // Form Section
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.grey.withOpacity(0.15)),
-                boxShadow: [
-                  BoxShadow(
-                      color: Colors.black.withOpacity(0.02),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8)
+      // Menggunakan Stack untuk menempatkan overlay loading di atas seluruh elemen UI
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: EdgeInsets.symmetric(horizontal: horizontalPadding, vertical: 24),
+            child: Column(
+              children: [
+                _buildImagePickerSection(),
+                const SizedBox(height: 32),
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.grey.withOpacity(0.15)),
+                    boxShadow: [
+                      BoxShadow(
+                          color: Colors.black.withOpacity(0.02),
+                          blurRadius: 15,
+                          offset: const Offset(0, 8)
+                      ),
+                    ],
                   ),
-                ],
-              ),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF1E40AF).withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Icon(Icons.badge_rounded, color: Color(0xFF1E40AF), size: 20),
+                        Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1E40AF).withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: const Icon(Icons.badge_rounded, color: Color(0xFF1E40AF), size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            const Text(
+                                'Informasi Karyawan',
+                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF111827))
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 12),
-                        const Text(
-                            'Informasi Karyawan',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF111827))
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 16),
+                          child: Divider(color: Color(0xFFF3F4F6), thickness: 1.5),
+                        ),
+
+                        _buildField(
+                            controller: _nameController,
+                            label: 'Nama Lengkap (Sesuai ID)',
+                            icon: Icons.person_outline_rounded,
+                            validator: (v) => v!.isEmpty ? 'Nama tidak boleh kosong' : null
+                        ),
+                        const SizedBox(height: 16),
+                        _buildField(
+                            controller: _nipController,
+                            label: 'NIP / Nomor Induk',
+                            icon: Icons.pin_outlined,
+                            validator: (v) => v!.isEmpty ? 'NIP tidak boleh kosong' : null
+                        ),
+                        const SizedBox(height: 16),
+                        _buildField(
+                            controller: _jobController,
+                            label: 'Jabatan / Divisi',
+                            icon: Icons.work_outline_rounded,
+                            validator: (v) => v!.isEmpty ? 'Jabatan tidak boleh kosong' : null
+                        ),
+                        const SizedBox(height: 16),
+                        _buildField(
+                          controller: _qrController,
+                          label: kIsWeb ? 'Value QR (Isi Manual)' : 'Value QR (Terisi Otomatis)',
+                          icon: Icons.qr_code_2_rounded,
+                          readOnly: !kIsWeb,
+                          validator: (v) => v!.isEmpty ? 'QR Value tidak boleh kosong' : null,
+                          fillColor: !kIsWeb ? const Color(0xFFF3F4F6) : null,
+                        ),
+                        const SizedBox(height: 32),
+
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _isLoading ? null : _handleRegistration,
+                            icon: const Icon(Icons.cloud_upload_rounded, size: 22),
+                            label: const Text(
+                                'Simpan Data Identitas',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)
+                            ),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: const Color(0xFF1E40AF),
+                              foregroundColor: Colors.white,
+                              disabledBackgroundColor: const Color(0xFF9CA3AF),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              elevation: 2,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            ),
+                          ),
                         ),
                       ],
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(vertical: 16),
-                      child: Divider(color: Color(0xFFF3F4F6), thickness: 1.5),
-                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
-                    _buildField(
-                        controller: _nameController,
-                        label: 'Nama Lengkap (Sesuai ID)',
-                        icon: Icons.person_outline_rounded,
-                        validator: (v) => v!.isEmpty ? 'Nama tidak boleh kosong' : null
-                    ),
-                    const SizedBox(height: 16),
-                    _buildField(
-                        controller: _nipController,
-                        label: 'NIP / Nomor Induk',
-                        icon: Icons.pin_outlined,
-                        validator: (v) => v!.isEmpty ? 'NIP tidak boleh kosong' : null
-                    ),
-                    const SizedBox(height: 16),
-                    _buildField(
-                        controller: _jobController,
-                        label: 'Jabatan / Divisi',
-                        icon: Icons.work_outline_rounded,
-                        validator: (v) => v!.isEmpty ? 'Jabatan tidak boleh kosong' : null
-                    ),
-                    const SizedBox(height: 16),
-                    _buildField(
-                      controller: _qrController,
-                      label: kIsWeb ? 'Value QR (Isi Manual)' : 'Value QR (Terisi Otomatis)',
-                      icon: Icons.qr_code_2_rounded,
-                      readOnly: !kIsWeb, // Jika mobile, biarkan readonly agar mengandalkan scan
-                      validator: (v) => v!.isEmpty ? 'QR Value tidak boleh kosong' : null,
-                      fillColor: !kIsWeb ? const Color(0xFFF3F4F6) : null,
-                    ),
-                    const SizedBox(height: 32),
-
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _handleRegistration,
-                        icon: _isLoading
-                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.cloud_upload_rounded, size: 22),
-                        label: Text(
-                            _isLoading ? 'Memproses Data...' : 'Simpan Data Identitas',
-                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 0.5)
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF1E40AF),
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: const Color(0xFF9CA3AF),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          elevation: 2,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+          // Loading Overlay saat mengirim data JSON
+          if (_isLoading)
+            Container(
+              color: Colors.black.withOpacity(0.6),
+              child: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(24),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Column(
+                        children: const [
+                          CircularProgressIndicator(color: Color(0xFF1E40AF)),
+                          SizedBox(height: 16),
+                          Text(
+                            'Menyimpan Data...',
+                            style: TextStyle(
+                              color: Color(0xFF111827),
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -457,13 +457,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           alignment: Alignment.center,
           fit: StackFit.expand,
           children: [
-            // Preview Gambar
             if (_imagePreviewPath != null)
               kIsWeb
                   ? Image.network(_imagePreviewPath!, fit: BoxFit.cover)
                   : Image.file(File(_imagePreviewPath!), fit: BoxFit.cover),
 
-            // Gradient Overlay
             if (_imagePreviewPath != null)
               Container(
                 decoration: BoxDecoration(
@@ -475,21 +473,19 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
               ),
 
-            // Tombol Ganti Gambar
             if (_imagePreviewPath != null)
               Positioned(
                 bottom: 16,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(20),
                   child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0), // Efek blur kaca
+                    filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       decoration: BoxDecoration(
                         color: Colors.white.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(color: Colors.white.withOpacity(0.5)),
-                        // backdropFilter
                       ),
                       child: const Row(
                         mainAxisSize: MainAxisSize.min,
@@ -507,10 +503,9 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
               ),
 
-            // Placeholder jika belum ada gambar
             if (_imagePreviewPath == null)
               Container(
-                color: const Color(0xFFF3F6FF), // Soft blue tint
+                color: const Color(0xFFF3F6FF),
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -533,7 +528,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 ),
               ),
 
-            // Overlay Loading saat Scanning QR
             if (_isScanningQR)
               Container(
                 color: Colors.black.withOpacity(0.6),
@@ -555,7 +549,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  // Helper untuk Bottom Sheet modern
   void _showImageSourceActionSheet() {
     showModalBottomSheet(
       context: context,
@@ -574,7 +567,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
               const Text('Pilih Sumber Gambar', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF111827))),
               const SizedBox(height: 16),
 
-              // Opsi Galeri
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -589,7 +581,6 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                 },
               ),
 
-              // Opsi Kamera
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -602,10 +593,8 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                   Navigator.pop(context);
 
                   if (kIsWeb) {
-                    // Web tidak support CameraScreen + ML Kit secara native, fallback ke file picker camera
                     _pickAndScanImage(ImageSource.camera);
                   } else {
-                    // Buka custom Camera Screen dengan flag isRegistration = true
                     final cameras = await availableCameras();
                     if (mounted) {
                       final result = await Navigator.push(
@@ -613,12 +602,11 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
                         MaterialPageRoute(
                           builder: (_) => CameraScreen(
                             cameras: cameras,
-                            isRegistration: true, // Beritahu kamera bahwa ini bukan mode Verify!
+                            isRegistration: true,
                           ),
                         ),
                       );
 
-                      // Tangkap Map result dari Navigator.pop
                       if (result != null && result is Map<String, dynamic>) {
                         _processCameraScreenResult(result);
                       }

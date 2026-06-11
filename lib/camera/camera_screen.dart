@@ -62,36 +62,20 @@ class _CameraScreenState extends State<CameraScreen> {
       final XFile image = await _controller.takePicture();
       final File imageFile = File(image.path);
 
+      setState(() => _processingMessage = "Mendeteksi QR...");
+      Barcode? qrBarcode = await _processor.detectQR(imageFile);
+
       if (widget.isRegistration) {
-        setState(() => _processingMessage = "Memproses Crop ID Card...");
-
-        // 1. Potong gambar penuh sesuai garis overlay markup
-        File? fullIdCardFile = await _processor.cropIDCardFromMarkup(imageFile);
-
-        // 2. deteksi QR code
-        setState(() => _processingMessage = "Mendeteksi QR...");
-        Barcode? qrBarcode = await _processor.detectQR(imageFile);
-
-        // 3. crop image unik
-        File? uniqueCropFile;
-        if (qrBarcode != null && qrBarcode.rawValue != null) {
-          setState(() => _processingMessage = "Memotong Area Unik...");
-          uniqueCropFile = await _processor.cropUniqueImageArea(imageFile, qrBarcode.boundingBox);
-        }
-
         if (mounted) {
           Navigator.pop(context, {
-            'full_id_file': fullIdCardFile ?? imageFile,
+            'full_id_file': imageFile,
             'qr_value': qrBarcode?.rawValue,
-            'unique_crop_file': uniqueCropFile,
           });
         }
         return;
       }
 
-      setState(() => _processingMessage = "Mendeteksi QR...");
-      Barcode? qrBarcode = await _processor.detectQR(imageFile);
-
+      // Pastikan QR terdeteksi sebelum melanjutkan verifikasi
       if (qrBarcode == null || qrBarcode.rawValue == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -102,24 +86,15 @@ class _CameraScreenState extends State<CameraScreen> {
         return;
       }
 
-      setState(() => _processingMessage = "Memotong Gambar...");
-      File? croppedFile = await _processor.cropUniqueImageArea(
-          imageFile,
-          qrBarcode.boundingBox
-      );
-
-      if (croppedFile == null) {
-        throw Exception("Gagal memotong gambar");
-      }
-
       setState(() => _processingMessage = "Mengunggah Data...");
-      final Uint8List croppedBytes = await croppedFile.readAsBytes();
-      final String croppedName = croppedFile.path.split(kIsWeb ? '/' : Platform.pathSeparator).last;
+      final Uint8List imageBytes = await imageFile.readAsBytes();
+      final String imageName = imageFile.path.split(kIsWeb ? '/' : Platform.pathSeparator).last;
 
+      // Kirim Nilai QR dan Gambar Asli penuh ke Backend
       final response = await _network.verifyScan(
         qrBarcode.rawValue!,
-        croppedBytes,
-        croppedName,
+        imageBytes,
+        imageName,
       );
 
       if (mounted) {
@@ -170,10 +145,7 @@ class _CameraScreenState extends State<CameraScreen> {
     showDialog(
       context: context,
       builder: (context) {
-        // Use details to determine status and color
-        final String status =
-            details?['status'] ?? (title == "Error" ? "failed" : "unknown");
-
+        final String status = details?['status'] ?? (title == "Error" ? "failed" : "unknown");
         final String statusLower = status.toLowerCase();
 
         Color statusColor;
@@ -181,21 +153,18 @@ class _CameraScreenState extends State<CameraScreen> {
         switch (statusLower) {
           case 'verified':
           case 'success':
-            statusColor = const Color(0xFF10B981); // Green
+            statusColor = const Color(0xFF10B981); // Hijau
             break;
-
-          case 'duplicate':
-            statusColor = const Color(0xFFF59E0B); // Amber
-            break;
-
           case 'fake':
           case 'failed':
           case 'rejected':
-            statusColor = const Color(0xFFEF4444); // Red
+            statusColor = const Color(0xFFEF4444); // Merah
             break;
-
+          case 'duplicate':
+            statusColor = const Color(0xFFF59E0B); // Amber
+            break;
           default:
-            statusColor = const Color(0xFF6B7280); // Grey
+            statusColor = const Color(0xFF6B7280); // Abu-abu
         }
 
         return Dialog(
@@ -205,7 +174,6 @@ class _CameraScreenState extends State<CameraScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Header
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -227,7 +195,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     ],
                   ),
                 ),
-                
+
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -239,19 +207,18 @@ class _CameraScreenState extends State<CameraScreen> {
                         _buildResultRow("Nama", details['fullname'] ?? "-"),
                         _buildResultRow("NIP", details['nip'] ?? "-"),
                         _buildResultRow("Match Score", "${((details['match_score'] ?? 0) * 100).toStringAsFixed(1)}%"),
-                        _buildResultRow("Liveness", "${((details['liveness_score'] ?? 0) * 100).toStringAsFixed(1)}%"),
-                        
+
                         const Padding(
                           padding: EdgeInsets.symmetric(vertical: 16),
                           child: Divider(),
                         ),
-                        
+
                         const Text(
                           "Perbandingan Gambar",
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
                         ),
                         const SizedBox(height: 12),
-                        
+
                         Row(
                           children: [
                             Expanded(
@@ -264,13 +231,17 @@ class _CameraScreenState extends State<CameraScreen> {
                                     child: Container(
                                       height: 120,
                                       width: double.infinity,
-                                      color: Colors.grey[200],
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[200],
+                                        border: Border.all(color: statusColor.withOpacity(0.5), width: 1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
                                       child: details['original_image_url'] != null
                                           ? Image.network(
-                                              details['original_image_url'],
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                                            )
+                                        details['original_image_url'],
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                      )
                                           : const Icon(Icons.image_not_supported, color: Colors.grey),
                                     ),
                                   ),
@@ -288,13 +259,17 @@ class _CameraScreenState extends State<CameraScreen> {
                                     child: Container(
                                       height: 120,
                                       width: double.infinity,
-                                      color: Colors.grey[200],
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[200],
+                                        border: Border.all(color: statusColor.withOpacity(0.5), width: 1),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
                                       child: details['scanned_image_url'] != null
                                           ? Image.network(
-                                              details['scanned_image_url'],
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                                            )
+                                        details['scanned_image_url'],
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                      )
                                           : const Icon(Icons.image_not_supported, color: Colors.grey),
                                     ),
                                   ),
@@ -309,7 +284,7 @@ class _CameraScreenState extends State<CameraScreen> {
                     ],
                   ),
                 ),
-                
+
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                   child: ElevatedButton(
@@ -369,7 +344,6 @@ class _CameraScreenState extends State<CameraScreen> {
               return Center(child: Text('Camera Error: ${snapshot.error}', style: const TextStyle(color: Colors.white)));
             }
 
-            // AspectRatio
             return Stack(
               fit: StackFit.expand,
               children: [
@@ -380,8 +354,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
                 const CardOverlay(),
-                
-                // Toolbar Atas (Close button)
+
                 Positioned(
                   top: MediaQuery.of(context).padding.top + 10,
                   left: 20,
@@ -394,7 +367,6 @@ class _CameraScreenState extends State<CameraScreen> {
                   ),
                 ),
 
-                // Overlay Loading / Processing
                 if (_isProcessing)
                   Container(
                     color: Colors.black.withOpacity(0.8),
@@ -409,9 +381,9 @@ class _CameraScreenState extends State<CameraScreen> {
                           Text(
                             _processingMessage,
                             style: const TextStyle(
-                              color: Colors.white, 
-                              fontSize: 16, 
-                              fontWeight: FontWeight.bold
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold
                             ),
                           ),
                         ],
@@ -419,7 +391,6 @@ class _CameraScreenState extends State<CameraScreen> {
                     ),
                   ),
 
-                // Tombol Capture Bawah
                 if (!_isProcessing)
                   Positioned(
                     bottom: 40,

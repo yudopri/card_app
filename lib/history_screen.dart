@@ -369,7 +369,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
 
     // Ambil score, coba beberapa kemungkinan key
     double matchScore = (item['match_score'] ?? item['similarity'] ?? item['score'] ?? 0).toDouble();
-    double livenessScore = (item['liveness_score'] ?? item['liveness'] ?? 0).toDouble();
 
     showDialog(
       context: context,
@@ -392,14 +391,14 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     children: [
                       const Icon(Icons.history_rounded, color: Colors.white, size: 48),
                       const SizedBox(height: 12),
-                      Text(
+                      const Text(
                         "Detail Verifikasi",
-                        style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                        style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
                       ),
                     ],
                   ),
                 ),
-                
+
                 Padding(
                   padding: const EdgeInsets.all(20),
                   child: Column(
@@ -409,7 +408,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                       _buildInfoRow("QR", item['id_card_qr'] ?? "-"),
                       _buildInfoRow("Status", status.toUpperCase(), valueColor: statusColor, isBold: true),
                       _buildInfoRow("Waktu", _formatDateTime(item['created_at'])),
-                      
+
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
                         child: Divider(),
@@ -420,38 +419,24 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
                       ),
                       const SizedBox(height: 12),
-                      
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildScoreMetric(
-                              "Match Score", 
-                              matchScore, 
-                              matchScore > 0.8 ? Colors.green : Colors.orange
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: _buildScoreMetric(
-                              "Liveness", 
-                              livenessScore, 
-                              livenessScore > 0.8 ? Colors.blue : Colors.orange
-                            ),
-                          ),
-                        ],
+
+                      _buildScoreMetric(
+                          "Match Score",
+                          matchScore,
+                          matchScore > 0.8 ? Colors.green : Colors.orange
                       ),
 
                       const Padding(
                         padding: EdgeInsets.symmetric(vertical: 16),
                         child: Divider(),
                       ),
-                      
+
                       const Text(
                         "Perbandingan Gambar",
                         style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF374151)),
                       ),
                       const SizedBox(height: 12),
-                      
+
                       Row(
                         children: [
                           Expanded(
@@ -467,10 +452,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     color: Colors.grey[200],
                                     child: item['original_image_url'] != null
                                         ? Image.network(
-                                            item['original_image_url'],
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                                          )
+                                      item['original_image_url'],
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                    )
                                         : const Icon(Icons.image_not_supported, color: Colors.grey),
                                   ),
                                 ),
@@ -491,10 +476,10 @@ class _HistoryScreenState extends State<HistoryScreen> {
                                     color: Colors.grey[200],
                                     child: item['scanned_image_url'] != null
                                         ? Image.network(
-                                            item['scanned_image_url'],
-                                            fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
-                                          )
+                                      item['scanned_image_url'],
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, color: Colors.grey),
+                                    )
                                         : const Icon(Icons.image_not_supported, color: Colors.grey),
                                   ),
                                 ),
@@ -506,7 +491,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     ],
                   ),
                 ),
-                
+
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
                   child: ElevatedButton(
@@ -531,6 +516,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   Widget _buildScoreMetric(String label, double score, Color color) {
     return Container(
       padding: const EdgeInsets.all(12),
+      width: double.infinity,
       decoration: BoxDecoration(
         color: color.withOpacity(0.05),
         borderRadius: BorderRadius.circular(12),
@@ -583,4 +569,3 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
   }
 }
-

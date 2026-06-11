@@ -127,8 +127,6 @@ class DioClient {
     required String qrCode,
     required Uint8List imageBytes,
     required String fileName,
-    required Uint8List uniqueCropBytes,
-    required String uniqueCropFileName,
   }) async {
     FormData formData = FormData.fromMap({
       'fullname': fullname,
@@ -138,10 +136,6 @@ class DioClient {
       'id_card_photo': MultipartFile.fromBytes(
         imageBytes,
         filename: fileName,
-      ),
-      'unique_crop_photo': MultipartFile.fromBytes(
-        uniqueCropBytes,
-        filename: uniqueCropFileName,
       ),
     });
 
